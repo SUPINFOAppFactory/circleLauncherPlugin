@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html ng-app="circleLauncher">
+<head lang="en">
+    <title>content</title>
+    <meta charset="UTF-8">
+
+    <!-- CSS -->
+    <link href="../../../../styles/helper.css" rel="stylesheet">
+    <link href="../../../../styles/siteIcons.css" rel="stylesheet">
+
+    <!-- JS -->
+    <script src="../../../../scripts/buildfire.js"></script>
+    <script src="../../../../scripts/angular/angular.min.js"></script>
+    <script src="../../../../scripts/tinymce/tinymce.min.js"></script>
+    <script src="../../../../scripts/tinymce/ui-tinymce.js"></script>
+    <script src="../../../../scripts/jquery/jquery-1.11.2.min.js"></script>
+
+    <script src="../../../../scripts/sortable.min.js"></script>
+    <script src="../../../../scripts/buildfire/components/carousel/carousel.js"></script>
+    <script src="../../../../scripts/buildfire/components/notifications/notifications.js"></script>
+    <script src="../../../../scripts/buildfire/components/pluginInstance/sortableList.js"></script>
+    <script src="framework.js"></script>
+
+</head>
+<body ng-controller="circleLauncherCtrl" ng-cloak ng-show="datastoreInitialized">
+<div ng-form="frmMain">
+    <div id="carousel"></div>
+    <hr class="none">
+    <div id="plugins"></div>
+</div>
+
+<script>
+    var circleLauncherApp = angular.module('circleLauncher', ['ui.tinymce']);
+
+    circleLauncherApp.controller('circleLauncherCtrl', ['$scope', function ($scope) {
+        var editor = new buildfire.components.carousel.editor("#carousel");
+
+        var plugins = new buildfire.components.pluginInstance.sortableList("#plugins", [], null, false, true);
+        var tmrDelay = null;
+
+        $scope.data = circleLauncherShared.getDefaultScopeData();
+
+        $scope.datastoreInitialized = false;
+
+
+        /*
+         * Go pull any previously saved data
+         * */
+        buildfire.datastore.getWithDynamicData(function (err, result) {
+            if (!err) {
+                $scope.datastoreInitialized = true;
+            } else {
+                console.error("Error: ", err);
+                return;
+            }
+
+            if (result && result.data && !angular.equals({}, result.data)) {
+
+                $scope.data = result.data;
+                $scope.id = result.id;
+                if ($scope.data.content && $scope.data.content.carouselImages) {
+                    editor.loadItems($scope.data.content.carouselImages);
+                }
+
+
+                if ($scope.data._buildfire && $scope.data._buildfire.plugins && $scope.data._buildfire.plugins.result) {
+                    var pluginsData = circleLauncherShared.getPluginDetails($scope.data._buildfire.plugins.result, $scope.data._buildfire.plugins.data);
+                    plugins.loadItems(pluginsData);
+                }
+
+                if (!$scope.data._buildfire) {
+                    $scope.data._buildfire = {
+                        plugins: {
+                            dataType: "pluginInstance",
+                            data: []
+                        }
+                    };
+                }
+
+                if (!$scope.data.design) {
+                    $scope.data.design = {
+                        backgroundImage: null,
+                        selectedLayout: 1,
+                        backgroundblur: 0
+                    };
+                }
+
+                if (tmrDelay) clearTimeout(tmrDelay);
+            }
+
+            /*
+             * watch for changes in data and trigger the saveDataWithDelay function on change
+             * */
+            $scope.$watch('data', saveDataWithDelay, true);
+            circleLauncherShared.digest($scope);
+        });
+
+        /*
+         * Call the datastore to save the data object
+         */
+        var saveData = function (newObj) {
+            if (!$scope.datastoreInitialized) {
+                console.error("Error with datastore didn't get called");
+                return;
+            }
+
+            if (newObj == undefined) return;
+            if ($scope.frmMain.$invalid) {
+                console.warn('invalid data, details will not be saved');
+                return;
+            }
+
+            if (newObj._buildfire && newObj._buildfire.plugins) {
+                newObj._buildfire.plugins.result = plugins.items;
+            }
+
+            circleLauncherShared.save(newObj);
+        };
+
+        /*
+         * create an artificial delay so api isnt called on every character entered
+         * */
+        var saveDataWithDelay = function (newObj, oldObj) {
+            if (tmrDelay) clearTimeout(tmrDelay);
+            if (angular.equals(newObj, oldObj)) return;
+            tmrDelay = setTimeout(function () {
+                saveData(newObj);
+            }, 500);
+        };
+
+        var getPluginsIds = function (plugins) {
+            var pluginsIds = [];
+            for (var i = 0; i < plugins.length; i++) {
+                pluginsIds.push(plugins[i].instanceId);
+            }
+            return pluginsIds;
+        };
+
+        // this method will be called when a new item added to the list
+        editor.onAddItems = editor.onDeleteItem = editor.onItemChange = editor.onOrderChange = function () {
+            $scope.data.content.carouselImages = editor.items;
+            circleLauncherShared.digest($scope);
+        };
+
+        plugins.onAddItems = function () {
+            var scopeItems = $scope.data._buildfire.plugins.data;
+            var itemIds = getPluginsIds(plugins.items);
+            for (var i = 0; i < itemIds.length; i++) {
+                if (scopeItems.indexOf(itemIds[i]) == -1) {
+                    scopeItems.push(itemIds[i]);
+                }
+            }
+
+            circleLauncherShared.digest($scope);
+        };
+
+        plugins.onDeleteItem = function (item, index) {
+            if (plugins.items.length == 0) {
+                $scope.data._buildfire.plugins.data = [];
+            } else {
+                $scope.data._buildfire.plugins.data.splice(index, 1);
+            }
+
+            circleLauncherShared.digest($scope);
+        };
+
+        plugins.onOrderChange = function (item, oldIndex, newIndex) {
+            var items = $scope.data._buildfire.plugins.data;
+
+            var tmp = items[oldIndex];
+
+            if (oldIndex < newIndex) {
+                for (var i = oldIndex + 1; i <= newIndex; i++) {
+                    items[i - 1] = items[i];
+                }
+            } else {
+                for (var i = oldIndex - 1; i >= newIndex; i--) {
+                    items[i + 1] = items[i];
+                }
+            }
+
+            items[newIndex] = tmp;
+
+            $scope.data._buildfire = {
+                "plugins": {
+                    "dataType": "pluginInstance",
+                    "data": items
+                }
+            };
+
+            circleLauncherShared.digest($scope);
+        };
+
+
+
+
+
+        var digest = function () {
+            if (!$scope.$$phase && !$scope.$root.$$phase) {
+                $scope.$apply();
+            }
+        };
+    }]);
+</script>
+</body>
+
+</html>

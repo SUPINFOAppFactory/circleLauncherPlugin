@@ -1,0 +1,22 @@
+{
+  "author":"SUPINFO AppFactory"
+,"pluginName":"Different Launcher Option"
+,"pluginDescription":"Displays your plugins in a circle"
+,"supportEmail":"supinfoappfactory@supinfo.com"
+,"control":{
+  "content":{
+    "enabled":true
+  }
+, "design":{
+    "enabled":false
+  }
+, "settings":{
+    "enabled":false
+  }
+}
+,"widget":{
+
+},
+  "features" : [],
+  "languages" : ["en"]
+}
